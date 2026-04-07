@@ -12,3 +12,11 @@ from astrowidget.wcs import get_wcs
 from astrowidget.widget import SkyWidget
 
 __all__ = ["SkyWidget", "open_dataset", "PreloadedCube", "get_wcs", "DataSourceError"]
+
+# SkyViewer requires Panel — conditional import
+try:
+    from astrowidget.viewer import SkyViewer
+
+    __all__ += ["SkyViewer"]
+except ImportError:
+    pass

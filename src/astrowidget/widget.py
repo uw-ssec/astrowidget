@@ -71,6 +71,10 @@ class SkyWidget(anywidget.AnyWidget):
     # --- Grid overlay ---
     show_grid = traitlets.Bool(True).tag(sync=True)
 
+    # --- Click events (JS → Python) ---
+    clicked_coord = traitlets.Tuple((0.0, 0.0)).tag(sync=True)  # (RA, Dec) in degrees
+    clicked_lm = traitlets.Tuple((0.0, 0.0)).tag(sync=True)     # (l, m) direction cosines
+
     # --- Slice indices (wired to PreloadedCube) ---
     time_idx = traitlets.Int(0).tag(sync=True)
     freq_idx = traitlets.Int(0).tag(sync=True)

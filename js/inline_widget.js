@@ -39,6 +39,7 @@ uniform sampler2D u_cmap;
 uniform vec2 u_crval, u_cdelt, u_crpix, u_imageSize, u_viewCenter, u_resolution;
 uniform float u_fov, u_opacity;
 uniform int u_stretch, u_showGrid;
+uniform vec2 u_crosshair;  // clicked position (RA, Dec) in radians; (-999,-999) = none
 out vec4 fragColor;
 
 // Auto-scale grid interval based on FOV
@@ -148,6 +149,24 @@ void main() {
     if (horizonAlpha > 0.0) {
         fragColor.rgb = mix(fragColor.rgb, vec3(0.0, 1.0, 0.5), horizonAlpha);
     }
+    // Crosshair at clicked position
+    if (u_crosshair.x > -900.0) {
+        float angDist = acos(clamp(
+            sin(dec)*sin(u_crosshair.y) + cos(dec)*cos(u_crosshair.y)*cos(ra - u_crosshair.x),
+            -1.0, 1.0));
+        float crossSize = fovDeg * 0.015 * 0.0174533;  // size in radians
+        float crossWidth = fovDeg * 0.002 * 0.0174533;
+        // Draw a "+" shape
+        float dra2 = abs(ra - u_crosshair.x);
+        if (dra2 > 3.14159) dra2 = 6.28318 - dra2;
+        float ddec2 = abs(dec - u_crosshair.y);
+        bool onH = ddec2 < crossWidth && dra2*cos(u_crosshair.y) < crossSize;
+        bool onV = dra2*cos(u_crosshair.y) < crossWidth && ddec2 < crossSize;
+        if (onH || onV) {
+            fragColor.rgb = vec3(0.0, 1.0, 1.0);  // cyan crosshair
+            fragColor.a = 1.0;
+        }
+    }
 }
 `;
 
@@ -234,7 +253,7 @@ export function render({ model, el }) {
     // Uniforms
     const loc = {};
     ["u_image","u_cmap","u_crval","u_cdelt","u_crpix","u_imageSize",
-     "u_viewCenter","u_fov","u_opacity","u_stretch","u_showGrid","u_resolution"].forEach(
+     "u_viewCenter","u_fov","u_opacity","u_stretch","u_showGrid","u_crosshair","u_resolution"].forEach(
       n => loc[n] = gl.getUniformLocation(prog, n)
     );
 
@@ -264,6 +283,7 @@ export function render({ model, el }) {
     let crval = [0,0], cdelt = [1,1], crpix = [0,0];
     let viewRA = 0, viewDec = 0, viewFov = Math.PI;
     let vmin = 0, vmax = 1, opacity = 1, stretch = 0, showGrid = 1;
+    let crosshairRA = -999, crosshairDec = -999;
     const stretchMap = { linear:0, log:1, sqrt:2, asinh:3 };
 
     function uploadImage() {
@@ -292,6 +312,7 @@ export function render({ model, el }) {
       gl.uniform1f(loc.u_opacity, opacity);
       gl.uniform1i(loc.u_stretch, stretch);
       gl.uniform1i(loc.u_showGrid, showGrid);
+      gl.uniform2f(loc.u_crosshair, crosshairRA, crosshairDec);
       gl.uniform2f(loc.u_resolution, canvas.width, canvas.height);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
@@ -360,10 +381,29 @@ export function render({ model, el }) {
 
     // --- Interaction ---
     let dragging = false, lastX = 0, lastY = 0;
+    let mouseDownX = 0, mouseDownY = 0, didDrag = false;
     canvas.style.cursor = "grab";
+
+    // Helper: screen coords → (RA, Dec) in radians
+    function screenToRaDec(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const sx = ((clientX-rect.left)/rect.width)*2-1;
+      const sy = -(((clientY-rect.top)/rect.height)*2-1);
+      const aspect = canvas.width/canvas.height;
+      const sc = Math.tan(viewFov*0.5);
+      const lV = -sx*sc*aspect, mV = sy*sc;
+      const r = Math.sqrt(lV*lV+mV*mV);
+      if (r < 1e-10) return { ra: viewRA, dec: viewDec };
+      const c = Math.atan(r), snc=Math.sin(c), csc=Math.cos(c);
+      const sd=Math.sin(viewDec), cd=Math.cos(viewDec);
+      const dec2 = Math.asin(csc*sd + mV*snc*cd/r);
+      const ra2 = viewRA + Math.atan2(lV*snc, r*cd*csc - mV*sd*snc);
+      return { ra: ra2, dec: dec2 };
+    }
 
     canvas.addEventListener("mousedown", e => {
       dragging = true; lastX = e.clientX; lastY = e.clientY;
+      mouseDownX = e.clientX; mouseDownY = e.clientY; didDrag = false;
       canvas.style.cursor = "grabbing";
     });
     window.addEventListener("mousemove", e => {
@@ -396,14 +436,39 @@ export function render({ model, el }) {
       viewRA -= dx*aspect/cosDec;
       viewDec = Math.max(-Math.PI/2+0.001, Math.min(Math.PI/2-0.001, viewDec+dy));
       lastX = e.clientX; lastY = e.clientY;
+      didDrag = true;
       requestAnimationFrame(draw);
     });
-    window.addEventListener("mouseup", () => {
+    window.addEventListener("mouseup", e => {
       if (dragging) {
         dragging = false; canvas.style.cursor = "grab";
-        model.set("view_ra", viewRA/DEG2RAD);
-        model.set("view_dec", viewDec/DEG2RAD);
-        model.save_changes();
+        // Distinguish click (< 3px movement) from drag
+        const dist = Math.sqrt((e.clientX-mouseDownX)**2 + (e.clientY-mouseDownY)**2);
+        if (dist < 3) {
+          // Click — compute celestial coords and send to Python
+          const coord = screenToRaDec(e.clientX, e.clientY);
+          const raDeg = ((coord.ra / DEG2RAD) % 360 + 360) % 360;
+          const decDeg = coord.dec / DEG2RAD;
+          model.set("clicked_coord", [raDeg, decDeg]);
+
+          // Compute (l, m) direction cosines from phase center
+          const dra = coord.ra - crval[0];
+          const sdP = Math.sin(coord.dec), cdP = Math.cos(coord.dec);
+          const sd0P = Math.sin(crval[1]), cd0P = Math.cos(crval[1]);
+          const lVal = cdP * Math.sin(dra);
+          const mVal = sdP * cd0P - cdP * sd0P * Math.cos(dra);
+          model.set("clicked_lm", [lVal, mVal]);
+          model.save_changes();
+
+          // Set crosshair position
+          crosshairRA = coord.ra;
+          crosshairDec = coord.dec;
+          requestAnimationFrame(draw);
+        } else {
+          model.set("view_ra", viewRA/DEG2RAD);
+          model.set("view_dec", viewDec/DEG2RAD);
+          model.save_changes();
+        }
       }
     });
     canvas.addEventListener("wheel", e => {
