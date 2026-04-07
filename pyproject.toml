@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "astrowidget"
+version = "0.1.0"
+description = "Interactive radio astronomy visualization widget for Jupyter"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.11"
+authors = [
+    { name = "UW Scientific Software Engineering Center" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Jupyter",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    "anywidget>=0.9",
+    "traitlets>=5.0",
+    "astropy>=6.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/astrowidget"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pixi.workspace]
+# Pinned due to https://github.com/prefix-dev/pixi/issues/4723
+requires-pixi = ">=0.55.0"
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[tool.pixi.dependencies]
+python = ">=3.11"
+nodejs = ">=20"
+pip = "*"
+
+[tool.pixi.pypi-dependencies]
+astrowidget = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { features = ["dev"], solve-group = "default" }
+
+[tool.pixi.feature.dev.dependencies]
+pytest = ">=8.0"
+pytest-cov = "*"
+ruff = "*"
+jupyterlab = ">=4.0"
+
+[tool.pixi.tasks]
+build = "npm run build"
+dev = "npm run dev"
+test = { cmd = "pytest tests/ -v && npx vitest run", description = "Run Python and JS tests" }
+test-py = "pytest tests/ -v"
+test-js = "npx vitest run"
+lint = "ruff check src/ tests/"
+vectors = "python tests/generate_test_vectors.py"

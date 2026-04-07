@@ -6,6 +6,11 @@ __pycache__/
 # C extensions
 *.so
 
+# Project-specific
+/.agents/
+node_modules/
+src/astrowidget/static/
+
 # Distribution / packaging
 .Python
 build/
