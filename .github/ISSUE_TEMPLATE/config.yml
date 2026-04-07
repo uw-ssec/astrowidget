@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: SSEC Contributing Guidelines
+    url: https://github.com/uw-ssec/.github/blob/main/CONTRIBUTING.md
+    about: Organization-wide contribution guidelines and AI-usage policy
+  - name: Documentation
+    url: https://uw-ssec.github.io/astrowidget
+    about: Check the docs before filing -- your question may already be answered
