@@ -84,6 +84,9 @@ param = ">=2.0"
 panel = ">=1.3"
 holoviews = ">=1.18"
 bokeh = ">=3.3"
+mkdocs = ">=1.6"
+mkdocs-material = ">=9.5"
+pymdown-extensions = ">=10.0"
 
 [tool.pixi.tasks]
 build = "npm run build"
@@ -92,4 +95,6 @@ test = { cmd = "pytest tests/ -v && npx vitest run", description = "Run Python a
 test-py = "pytest tests/ -v"
 test-js = "npx vitest run"
 lint = "ruff check src/ tests/"
+docs-serve = { cmd = "mkdocs serve", description = "Serve docs locally at localhost:8000" }
+docs-build = { cmd = "mkdocs build --strict", description = "Build static docs site" }
 vectors = "python tests/generate_test_vectors.py"

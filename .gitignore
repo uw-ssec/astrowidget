@@ -9,7 +9,6 @@ __pycache__/
 # Project-specific
 /.agents/
 node_modules/
-src/astrowidget/static/
 
 # Distribution / packaging
 .Python

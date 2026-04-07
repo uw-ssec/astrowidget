@@ -1,0 +1,29 @@
+{
+  "title": "astrowidget: Interactive Radio Astronomy Visualization for Jupyter",
+  "description": "A custom Jupyter widget for interactive radio astronomy visualization. Renders radio images on a rotatable celestial sphere with SIN projection, reading directly from zarr with no FITS intermediary.",
+  "upload_type": "software",
+  "license": "BSD-3-Clause",
+  "creators": [
+    {
+      "name": "UW Scientific Software Engineering Center",
+      "affiliation": "University of Washington"
+    }
+  ],
+  "keywords": [
+    "radio astronomy",
+    "jupyter widget",
+    "visualization",
+    "OVRO-LWA",
+    "zarr",
+    "WebGL",
+    "SIN projection",
+    "HiPS"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/uw-ssec/astrowidget",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}

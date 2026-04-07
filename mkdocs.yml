@@ -1,0 +1,64 @@
+site_name: astrowidget
+site_description: Interactive radio astronomy visualization for Jupyter
+site_url: https://uw-ssec.github.io/astrowidget
+repo_url: https://github.com/uw-ssec/astrowidget
+repo_name: uw-ssec/astrowidget
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: guides/getting-started.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Data Pipeline: architecture/data-pipeline.md
+    - WebGL Renderer: architecture/webgl-renderer.md
+    - Architecture Decisions: architecture/decisions.md
+  - Guides:
+    - OVRO-LWA Integration: guides/ovro-lwa.md
+    - HiPS Backgrounds: guides/hips-backgrounds.md
+  - API Reference:
+    - SkyWidget: api/sky-widget.md
+    - Data I/O: api/data-io.md
+    - SkyViewer: api/sky-viewer.md

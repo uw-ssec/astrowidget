@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from astropy.wcs import WCS
 
 _STATIC = Path(__file__).parent / "static"
-_JS_PATH = Path(__file__).parent.parent.parent / "js" / "inline_widget.js"
+_JS_PATH = _STATIC / "widget.js"
 
 
 class SkyWidget(anywidget.AnyWidget):

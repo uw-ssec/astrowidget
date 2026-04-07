@@ -1,5 +1,4 @@
-Create a versioned release with changelog, tag, GitHub release, and plugin zip
-assets.
+Create a versioned release that triggers PyPI publishing via trusted publisher.
 
 ## Arguments
 
@@ -18,6 +17,7 @@ to analyzing changes)
 2. Get the current version:
    - Check `git tag --sort=-v:refname | head -1` for the latest tag
    - If no tags exist, start at `v0.1.0`
+   - Also check `pyproject.toml` `version` field
 
 3. Calculate the new version following semver.
 
@@ -26,97 +26,107 @@ to analyzing changes)
    - `git pull origin main` — must be up to date
    - Warn and stop if not on `main` or if there are uncommitted changes
 
-5. Read `CHANGELOG.md` and check that the `[Unreleased]` section has content.
+5. Update the version in `pyproject.toml`:
+   - Change `version = "X.Y.Z"` to the new version
+   - Also update `__version__` in `src/astrowidget/__init__.py`
 
-6. Update `CHANGELOG.md`:
-   - Rename `[Unreleased]` to `[X.Y.Z] -- YYYY-MM-DD` (today's date)
-   - Add a new empty `[Unreleased]` section above it
+6. Ensure the JS bundle is current:
+   - Copy `js/inline_widget.js` to `src/astrowidget/static/widget.js`
+   - Verify `src/astrowidget/static/widget.js` exists
 
-7. Commit the changelog update:
-
+7. Run tests to verify everything works:
    ```bash
-   git add CHANGELOG.md
-   git commit -m "$(cat <<'EOF'
-   chore(release): prepare vX.Y.Z
-
-   Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-   EOF
-   )"
+   pixi run test-py
    ```
+   Stop if tests fail.
 
-8. Create the git tag:
-
+8. Verify the package builds:
    ```bash
-   git tag -a vX.Y.Z -m "vX.Y.Z"
+   pip install build && python -m build
    ```
+   Check that `dist/astrowidget-X.Y.Z-py3-none-any.whl` contains
+   `astrowidget/static/widget.js`.
 
-9. Push the commit and tag:
-
-   ```bash
-   git push origin main --follow-tags
-   ```
-
-10. Build plugin zip assets:
-    - For each directory in `plugins/`, create a zip archive
-    - **Zip naming convention:**
-      - Default: `plugin_name_MM_DD_YYYY.zip` (snake_case plugin name + date)
-      - If a release already exists for today (check `gh release list`), append
-        a sequence suffix: `plugin_name_MM_DD_YYYY_2.zip`, `_3.zip`, etc.
-    - Example: `recipe_workshop_03_30_2026.zip`, or
-      `recipe_workshop_03_30_2026_2.zip` for a second release that day
-    - Create zips from within the `plugins/` directory so the zip root is the
-      plugin folder itself:
-      ```bash
-      cd plugins && zip -r ../plugin_name_MM_DD_YYYY.zip plugin-dir-name/ -x "*.DS_Store" "*__pycache__/*" "*.pyc" && cd ..
-      ```
-    - Exclude unnecessary files from zip: `.DS_Store`, `__pycache__`, `*.pyc`
-
-11. Create a GitHub release with plugin zips as assets:
-
+9. Commit the version bump:
     ```bash
-    gh release create vX.Y.Z --title "vX.Y.Z" \
-      --notes "$(cat <<'EOF'
-    ## What's Changed
-
-    <extract the relevant section from CHANGELOG.md>
-
-    ## Plugin Assets
-
-    <list each plugin zip with name and description>
-
-    **Full Changelog**: https://github.com/cdcore09/recipe-workshop/compare/vPREVIOUS...vX.Y.Z
-    EOF
-    )" \
-      plugin_name_MM_DD_YYYY.zip
+    git add pyproject.toml src/astrowidget/__init__.py src/astrowidget/static/widget.js
+    git commit -m "chore(release): prepare vX.Y.Z"
     ```
 
-12. Clean up zip files from the repo root after successful upload.
+10. Create the git tag:
+    ```bash
+    git tag -a vX.Y.Z -m "vX.Y.Z"
+    ```
 
-13. Confirm: "Released vX.Y.Z — <release URL>"
+11. Ask for confirmation before pushing.
+
+12. Push the commit and tag:
+    ```bash
+    git push origin main --follow-tags
+    ```
+
+13. Create a GitHub release (triggers the publish workflow):
+    ```bash
+    gh release create vX.Y.Z --title "vX.Y.Z" \
+      --generate-notes \
+      --latest
+    ```
+
+    This uses `.github/release.yml` to auto-generate categorized release notes:
+    - PRs labeled `breaking` appear under **Breaking Changes**
+    - PRs labeled `enhancement` appear under **New Features**
+    - PRs labeled `bug` appear under **Bug Fixes**
+    - PRs labeled `documentation` appear under **Documentation**
+    - All other PRs appear under **Other Changes**
+    - Commits from `dependabot` and `pre-commit-ci` are excluded
+
+    The `.github/workflows/publish.yml` workflow will then automatically:
+    - Build the JS bundle and Python package
+    - Publish to PyPI via trusted publisher (OIDC)
+
+14. Confirm: "Released vX.Y.Z — <release URL>"
+    - Remind user to check the GitHub Actions run for PyPI publish status
+
+## Prerequisites
+
+Before the first release, the following must be configured:
+
+1. **PyPI**: Add a pending trusted publisher at
+   [pypi.org/manage/account/publishing](https://pypi.org/manage/account/publishing/)
+   with owner=`uw-ssec`, repo=`astrowidget`, workflow=`publish.yml`,
+   environment=`pypi`
+
+2. **GitHub**: Create a `pypi` environment in the repo settings
+   (Settings → Environments → New environment → name it `pypi`)
 
 ## Version Guidelines
 
-| Bump            | When                               | Example             |
-| --------------- | ---------------------------------- | ------------------- |
+| Bump            | When                               | Example              |
+| --------------- | ---------------------------------- | -------------------- |
 | `patch` (0.1.X) | Bug fixes, docs, chores, refactors | `v0.1.1` → `v0.1.2` |
 | `minor` (0.X.0) | New features, non-breaking changes | `v0.1.2` → `v0.2.0` |
 | `major` (X.0.0) | Breaking changes, major rewrites   | `v0.2.0` → `v1.0.0` |
 
-## Zip Naming Rules
+## Release Note Labels
 
-- Plugin directory name is converted to snake_case: `recipe-workshop` →
-  `recipe_workshop`
-- Date format is `MM_DD_YYYY`
-- Sequence suffix only added when multiple releases occur on the same day
-- Sequence starts at `_2` (first release of the day has no suffix)
+For the auto-generated release notes to categorize PRs correctly, apply these
+labels to PRs before merging:
+
+| Label | Release Notes Section |
+|---|---|
+| `breaking` | Breaking Changes |
+| `enhancement` | New Features |
+| `bug` | Bug Fixes |
+| `documentation` | Documentation |
+| `ignore-for-release` | Excluded from notes |
+
+PRs without these labels appear under **Other Changes**.
 
 ## Rules
 
 - Must be on `main` branch with no uncommitted changes
-- Must have content in `[Unreleased]` section of CHANGELOG.md
+- All tests must pass before releasing
 - Never create a release from a feature branch
 - Tag format is always `vX.Y.Z` (with `v` prefix)
+- The wheel must include `astrowidget/static/widget.js`
 - Ask for confirmation before pushing the tag and creating the release
-- If CHANGELOG.md doesn't exist or has no `[Unreleased]` section, warn and ask
-  how to proceed
-- Never commit generated zip files — they are upload artifacts only
