@@ -32,11 +32,19 @@ Record of key technical decisions made during development.
 - **Why:** When the user drags the sphere, the JS sends view_ra/dec/fov to Python via `model.save_changes()`. Python processes this and the model echo propagates back to JS, triggering `change:view_ra` which calls `syncView()` and overwrites the local drag state. This caused the view to snap back to the pre-drag position.
 - **Result:** `syncView()` returns immediately when `userInteracting` is true. The flag is set on `mousedown`, cleared 500ms after `mouseup`. Interaction is now smooth.
 
-### 2026-04-06: setTimeout retries for initial model sync (Workaround)
+### 2026-04-07: Exponential-backoff polling for initial model sync (Accepted)
+
+- **Decision:** Replace the three fixed-timeout retries (0ms, 150ms, 600ms) with an exponential-backoff polling loop (up to 15 attempts over ~6 seconds)
+- **Why:** The fixed retries gave up after 600ms. For large OVRO-LWA images (~1MB float32 binary), the anywidget binary comm channel often delivers `image_data` after 600ms, leaving the canvas black. This was a regression introduced in `8c62844` when the widget JS was rewritten.
+- **Result:** The polling loop checks `model.get("image_data")` on each attempt, stops as soon as data arrives, and logs the poll count. If data still hasn't arrived after all attempts, it falls back to the `change:image_data` event handler. The `userInteracting` guard still prevents polls from interfering with user interaction.
+
+### 2026-04-06: setTimeout retries for initial model sync (Superseded)
+
+!!! warning "Superseded by exponential-backoff polling (2026-04-07)"
 
 - **Decision:** Call `syncAll()` immediately, at 150ms, and at 600ms after render
 - **Why:** anywidget's model data (image_data, crval, vmin, etc.) is not always available when `render()` first runs. The traitlet values arrive asynchronously after the widget is displayed. Without retries, the widget renders with default values (empty image, vmin=0, vmax=1).
-- **Result:** The 600ms retry reliably picks up the data. The `userInteracting` guard prevents these retries from interfering with user interaction.
+- **Result:** The 600ms retry was insufficient for large images. Replaced with exponential-backoff polling in v0.1.1.
 
 ### 2026-04-06: set_dataset() auto-computes FOV from image extent (Accepted)
 

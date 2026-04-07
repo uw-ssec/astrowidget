@@ -133,3 +133,38 @@ widget  # Aladin Lite tiles appear behind the radio data
 ```
 
 Available presets: `DSS`, `2MASS`, `WISE`, `Planck`, `SDSS`, `Mellinger`, `Fermi`, `Haslam408`
+
+## Troubleshooting
+
+### Black canvas on initial load
+
+If the widget renders a black canvas with no image data visible, the binary
+traitlet data likely arrived after the renderer's initial sync window.
+
+**Symptoms:** Black canvas, no error in the Python cell. The browser console
+may show `[astrowidget] No image data after 15 polls`.
+
+**Fix:** Upgrade to `astrowidget >= 0.1.1`, which uses exponential-backoff
+polling instead of fixed timeouts. If you're using a local editable install,
+pull the latest source and restart the kernel.
+
+**Verify:** Open the browser console (`Cmd+Option+J` on Mac) and look for:
+
+```
+[astrowidget] Data arrived after N poll(s)
+```
+
+If `N` is greater than 3, the old fixed-timeout approach would have shown
+a black canvas.
+
+### Widget displays but doesn't update on slice change
+
+Ensure `set_dataset()` was called before changing `time_idx` or `freq_idx`.
+Direct `set_image()` calls don't create the `PreloadedCube` needed for slice
+navigation.
+
+### Kernel restart required after code changes
+
+The widget JS is embedded at Python import time via `_esm = Path(...).read_text()`.
+Changes to `src/astrowidget/static/widget.js` require a kernel restart to take
+effect.
