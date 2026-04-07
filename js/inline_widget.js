@@ -167,6 +167,8 @@ void main() {
             fragColor.a = 1.0;
         }
     }
+    // Premultiply alpha for correct compositing with background
+    fragColor.rgb *= fragColor.a;
 }
 `;
 
@@ -210,20 +212,57 @@ function normalizeToUint8(floatData, vmin, vmax) {
   return out;
 }
 
-export function render({ model, el }) {
+// Survey presets
+const SURVEY_PRESETS = {
+  "DSS": "CDS/P/DSS2/color",
+  "2MASS": "CDS/P/2MASS/color",
+  "WISE": "CDS/P/allWISE/color",
+  "Planck": "CDS/P/PLANCK/R2/HFI/color",
+  "SDSS": "CDS/P/SDSS9/color",
+  "Mellinger": "CDS/P/Mellinger/color",
+  "Fermi": "CDS/P/Fermi/color",
+  "Haslam408": "CDS/P/HI4PI/NHI",
+};
+
+export async function render({ model, el }) {
   function log(s) { console.log("[astrowidget]", s); }
 
-  // Canvas
+  // --- Aladin Lite: load if background survey is requested ---
+  let AladinLib = null;
+  let aladin = null;
+  const initBg = model.get("background_survey");
+
+  if (initBg) {
+    try {
+      const mod = await import("https://esm.sh/aladin-lite@3.7.3-beta");
+      AladinLib = mod.default;
+      await AladinLib.init;
+      log("Aladin Lite loaded");
+    } catch (e) {
+      log("Aladin Lite load failed: " + e.message);
+    }
+  }
+
+  // Container
   const container = document.createElement("div");
-  container.style.cssText = "position:relative;width:100%;height:600px;background:#000";
+  container.style.cssText = "position:relative;width:100%;height:600px;background:" + (initBg && AladinLib ? "transparent" : "#000");
   el.appendChild(container);
+
+  // Aladin div (background layer — behind canvas, z-index 0)
+  const aladinDiv = document.createElement("div");
+  aladinDiv.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;z-index:0";
+  if (initBg && AladinLib) {
+    container.appendChild(aladinDiv);
+  }
+
+  // WebGL canvas (foreground — z-index 1, transparent where no data)
   const canvas = document.createElement("canvas");
-  canvas.style.cssText = "width:100%;height:100%;display:block";
+  canvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;display:block;z-index:1";
   container.appendChild(canvas);
 
-  // Readout
+  // Readout (on top of everything)
   const readout = document.createElement("div");
-  readout.style.cssText = "position:absolute;bottom:8px;left:8px;color:#fff;font:13px monospace;text-shadow:0 0 4px #000;pointer-events:none";
+  readout.style.cssText = "position:absolute;bottom:8px;left:8px;color:#fff;font:13px monospace;text-shadow:0 0 4px #000;pointer-events:none;z-index:2";
   container.appendChild(readout);
 
   try {
@@ -233,7 +272,7 @@ export function render({ model, el }) {
     canvas.width = (rect.width || 800) * dpr;
     canvas.height = (rect.height || 600) * dpr;
 
-    const gl = canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true });
+    const gl = canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
     if (!gl) { log("FAIL: No WebGL2"); return; }
     log("WebGL2: " + gl.getParameter(gl.RENDERER));
 
@@ -283,6 +322,7 @@ export function render({ model, el }) {
     let crval = [0,0], cdelt = [1,1], crpix = [0,0];
     let viewRA = 0, viewDec = 0, viewFov = Math.PI;
     let vmin = 0, vmax = 1, opacity = 1, stretch = 0, showGrid = 1;
+    let dragging = false;
     let crosshairRA = -999, crosshairDec = -999;
     const stretchMap = { linear:0, log:1, sqrt:2, asinh:3 };
 
@@ -296,10 +336,10 @@ export function render({ model, el }) {
 
     function draw() {
       gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.clearColor(0, 0, 0, 1);
+      gl.clearColor(0, 0, 0, 0);  // always transparent — container background provides the black
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.useProgram(prog);
       gl.uniform1i(loc.u_image, 0);
       gl.uniform1i(loc.u_cmap, 1);
@@ -338,6 +378,8 @@ export function render({ model, el }) {
     }
 
     function syncView() {
+      // Don't overwrite local view state during user interaction
+      if (dragging) return;
       viewRA = (model.get("view_ra")||0)*DEG2RAD;
       viewDec = (model.get("view_dec")||0)*DEG2RAD;
       viewFov = (model.get("view_fov")||180)*DEG2RAD;
@@ -373,14 +415,91 @@ export function render({ model, el }) {
     model.on("change:opacity", () => { syncDisplay(); draw(); });
     model.on("change:stretch", () => { syncDisplay(); draw(); });
     model.on("change:show_grid", () => { syncDisplay(); draw(); });
+    model.on("change:background_survey", () => {
+      const hasBg = model.get("background_survey");
+      container.style.background = hasBg ? "transparent" : "#000";
+      draw();
+    });
+
+    // --- Aladin Lite: JS-side sync (no Python round-trip) ---
+    function syncAladin() {
+      if (!aladin) return;
+      const raDeg = ((viewRA / DEG2RAD) % 360 + 360) % 360;
+      const decDeg = viewDec / DEG2RAD;
+      const fovDeg = viewFov / DEG2RAD;
+      aladin.gotoRaDec(raDeg, decDeg);
+      aladin.setFoV(fovDeg);
+    }
+
+    // Initialize Aladin if background survey is set
+    if (AladinLib && initBg) {
+      const hipsUrl = SURVEY_PRESETS[initBg] || initBg;
+      const raDeg = ((viewRA / DEG2RAD) % 360 + 360) % 360;
+      const decDeg = viewDec / DEG2RAD;
+      const fovDeg = viewFov / DEG2RAD;
+      aladin = AladinLib.aladin(aladinDiv, {
+        fov: fovDeg || 180,
+        target: raDeg + " " + decDeg,
+        survey: hipsUrl,
+        projection: "SIN",
+        showCooGrid: false,
+        showFrame: false,
+        showCooGridControl: false,
+        showSimbadPointerControl: false,
+        showFullscreenControl: false,
+        showLayersControl: false,
+        showGotoControl: false,
+        showShareControl: false,
+        showSettingsControl: false,
+        showZoomControl: false,
+      });
+      log("Aladin viewer created: " + initBg);
+    }
+
+    // Handle background_survey changes
+    model.on("change:background_survey", async () => {
+      const survey = model.get("background_survey");
+      if (survey && aladin) {
+        // Switch survey on existing instance
+        const hipsUrl = SURVEY_PRESETS[survey] || survey;
+        aladin.setBaseImageLayer(hipsUrl);
+        container.style.background = "transparent";
+      } else if (survey && !aladin && !AladinLib) {
+        // Need to load Aladin Lite for the first time
+        try {
+          const mod = await import("https://esm.sh/aladin-lite@3.7.3-beta");
+          AladinLib = mod.default;
+          await AladinLib.init;
+          container.appendChild(aladinDiv);
+          container.style.background = "transparent";
+          const hipsUrl = SURVEY_PRESETS[survey] || survey;
+          aladin = AladinLib.aladin(aladinDiv, {
+            fov: (viewFov / DEG2RAD) || 180,
+            target: (((viewRA / DEG2RAD) % 360 + 360) % 360) + " " + (viewDec / DEG2RAD),
+            survey: hipsUrl, projection: "SIN",
+            showCooGrid: false, showFrame: false,
+            showCooGridControl: false, showSimbadPointerControl: false,
+            showFullscreenControl: false, showLayersControl: false,
+            showGotoControl: false, showShareControl: false,
+            showSettingsControl: false, showZoomControl: false,
+          });
+          log("Aladin loaded on demand: " + survey);
+        } catch (e) { log("Aladin load failed: " + e.message); }
+      } else if (!survey) {
+        container.style.background = "#000";
+        aladinDiv.style.display = "none";
+      }
+      draw();
+    });
 
     // Initial sync — try immediately, then retry after model is populated
     syncAll();
     setTimeout(syncAll, 100);
-    setTimeout(syncAll, 500);
+    setTimeout(() => { syncAll(); syncAladin(); }, 500);
 
     // --- Interaction ---
-    let dragging = false, lastX = 0, lastY = 0;
+    // (dragging declared earlier for syncView guard)
+    let lastX = 0, lastY = 0;
     let mouseDownX = 0, mouseDownY = 0, didDrag = false;
     canvas.style.cursor = "grab";
 
@@ -437,6 +556,7 @@ export function render({ model, el }) {
       viewDec = Math.max(-Math.PI/2+0.001, Math.min(Math.PI/2-0.001, viewDec+dy));
       lastX = e.clientX; lastY = e.clientY;
       didDrag = true;
+      syncAladin();
       requestAnimationFrame(draw);
     });
     window.addEventListener("mouseup", e => {
@@ -468,6 +588,7 @@ export function render({ model, el }) {
           model.set("view_ra", viewRA/DEG2RAD);
           model.set("view_dec", viewDec/DEG2RAD);
           model.save_changes();
+          syncAladin();
         }
       }
     });
@@ -477,6 +598,7 @@ export function render({ model, el }) {
       viewFov = Math.max(0.001*DEG2RAD, Math.min(Math.PI, viewFov));
       model.set("view_fov", viewFov/DEG2RAD);
       model.save_changes();
+      syncAladin();
       requestAnimationFrame(draw);
     }, { passive: false });
 

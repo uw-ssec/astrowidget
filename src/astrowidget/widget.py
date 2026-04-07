@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from astropy.wcs import WCS
 
 _STATIC = Path(__file__).parent / "static"
+_JS_PATH = Path(__file__).parent.parent.parent / "js" / "inline_widget.js"
 
 
 class SkyWidget(anywidget.AnyWidget):
@@ -44,7 +45,7 @@ class SkyWidget(anywidget.AnyWidget):
     >>> widget  # displays in notebook
     """
 
-    _esm = Path(__file__).parent.parent.parent / "js" / "inline_widget.js"
+    _esm = _JS_PATH.read_text()
     _css = ""
 
     # --- Binary image data (raw float32 bytes, no JSON) ---
@@ -71,6 +72,10 @@ class SkyWidget(anywidget.AnyWidget):
     # --- Grid overlay ---
     show_grid = traitlets.Bool(True).tag(sync=True)
 
+    # --- HiPS background ---
+    background_survey = traitlets.Unicode("").tag(sync=True)  # empty = no background
+    background_opacity = traitlets.Float(1.0).tag(sync=True)
+
     # --- Click events (JS → Python) ---
     clicked_coord = traitlets.Tuple((0.0, 0.0)).tag(sync=True)  # (RA, Dec) in degrees
     clicked_lm = traitlets.Tuple((0.0, 0.0)).tag(sync=True)     # (l, m) direction cosines
@@ -85,7 +90,19 @@ class SkyWidget(anywidget.AnyWidget):
         self._current_data = None
         self._cube = None
         self._display_wcs = None
+        self._aladin = None
         self.observe(self._on_slice_change, names=["time_idx", "freq_idx"])
+        self.observe(self._on_view_change, names=["view_ra", "view_dec", "view_fov"])
+
+    def _on_view_change(self, change) -> None:
+        """Observer: sync view state to companion Aladin widget."""
+        if self._aladin is None:
+            return
+        from astropy.coordinates import SkyCoord
+        self._aladin.target = SkyCoord(
+            ra=self.view_ra, dec=self.view_dec, unit="deg", frame="fk5"
+        )
+        self._aladin.fov = self.view_fov
 
     def _on_slice_change(self, change) -> None:
         """Observer: update displayed image when time_idx or freq_idx changes."""
@@ -210,6 +227,93 @@ class SkyWidget(anywidget.AnyWidget):
         if not hasattr(self, "_cube") or self._cube is None:
             raise RuntimeError("Call set_dataset() before update_slice()")
         self.set_image(self._cube.image(time_idx, freq_idx), self._display_wcs)
+
+    def overlay(self, survey: str = "DSS", height: int = 600):
+        """Display this widget overlaid on HiPS survey tiles.
+
+        Returns an ipywidgets container with Aladin Lite behind and
+        the SkyWidget on top. The radio image pixels are transparent
+        where there's no data, so the survey tiles show through.
+
+        Parameters
+        ----------
+        survey : str, default "DSS"
+            Survey preset name or HiPS URL.
+        height : int, default 600
+            Container height in pixels.
+
+        Returns
+        -------
+        ipywidgets.GridBox
+            Container with both widgets stacked.
+        """
+        import ipywidgets as widgets
+
+        aladin = self.create_background(survey)
+
+        # Signal JS to use transparent canvas background
+        self.background_survey = survey
+
+        # Stack using CSS Grid — both widgets in the same grid cell
+        self.layout = widgets.Layout(grid_area="1 / 1")
+        aladin.layout = widgets.Layout(grid_area="1 / 1")
+
+        container = widgets.GridBox(
+            children=[aladin, self],
+            layout=widgets.Layout(
+                width="100%",
+                grid_template_columns="1fr",
+                grid_template_rows=f"{height}px",
+            ),
+        )
+        self._aladin = aladin
+        return container
+
+    def create_background(self, survey: str = "CDS/P/DSS2/color", fov: float | None = None):
+        """Create an ipyaladin widget synced to this widget's view.
+
+        Returns an Aladin widget that can be displayed alongside the
+        SkyWidget. The Aladin widget shows HiPS survey tiles as a
+        reference background.
+
+        Parameters
+        ----------
+        survey : str, default "CDS/P/DSS2/color"
+            HiPS survey URL or preset name.
+        fov : float, optional
+            Field of view in degrees. Defaults to this widget's current FOV.
+
+        Returns
+        -------
+        ipyaladin.Aladin
+            The Aladin widget instance.
+        """
+        from astropy.coordinates import SkyCoord
+        from ipyaladin import Aladin
+
+        PRESETS = {
+            "DSS": "CDS/P/DSS2/color",
+            "2MASS": "CDS/P/2MASS/color",
+            "WISE": "CDS/P/allWISE/color",
+            "Planck": "CDS/P/PLANCK/R2/HFI/color",
+            "SDSS": "CDS/P/SDSS9/color",
+            "Mellinger": "CDS/P/Mellinger/color",
+            "Fermi": "CDS/P/Fermi/color",
+            "Haslam408": "CDS/P/HI4PI/NHI",
+        }
+        hips_url = PRESETS.get(survey, survey)
+        view_fov = fov if fov is not None else self.view_fov
+
+        target = SkyCoord(ra=self.view_ra, dec=self.view_dec, unit="deg", frame="fk5")
+        aladin = Aladin(
+            target=target,
+            fov=view_fov,
+            survey=hips_url,
+            projection="SIN",
+            show_coo_grid=True,
+            height=600,
+        )
+        return aladin
 
     def auto_scale(self, percentile_low: float = 2, percentile_high: float = 98) -> None:
         """Set vmin/vmax from data percentiles.

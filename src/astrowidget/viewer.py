@@ -18,6 +18,17 @@ if TYPE_CHECKING:
 
 __all__ = ["SkyViewer"]
 
+SURVEY_HIPS = {
+    "DSS": "CDS/P/DSS2/color",
+    "2MASS": "CDS/P/2MASS/color",
+    "WISE": "CDS/P/allWISE/color",
+    "Planck": "CDS/P/PLANCK/R2/HFI/color",
+    "SDSS": "CDS/P/SDSS9/color",
+    "Mellinger": "CDS/P/Mellinger/color",
+    "Fermi": "CDS/P/Fermi/color",
+    "Haslam408": "CDS/P/HI4PI/NHI",
+}
+
 
 class SkyViewer(param.Parameterized):
     """Interactive sky viewer dashboard with linked spectrum/light curve panels.
@@ -55,6 +66,12 @@ class SkyViewer(param.Parameterized):
         doc="Stretch function",
     )
     show_grid = param.Boolean(default=True, doc="Show RA/Dec grid overlay")
+    background_survey = param.Selector(
+        default="",
+        objects=["", "DSS", "2MASS", "WISE", "Planck", "SDSS", "Mellinger", "Fermi", "Haslam408"],
+        doc="HiPS background survey (empty = none)",
+    )
+    background_opacity = param.Number(default=1.0, bounds=(0.0, 1.0), doc="Background opacity")
 
     def __init__(self, ds: xr.Dataset, var: str = "SKY", pol: int = 0, max_size: int = 512, **kwargs):
         super().__init__(**kwargs)
@@ -136,6 +153,14 @@ class SkyViewer(param.Parameterized):
     def _on_grid_change(self):
         self._widget.show_grid = self.show_grid
 
+    @param.depends("background_survey", watch=True)
+    def _on_bg_survey_change(self):
+        self._widget.background_survey = self.background_survey
+
+    @param.depends("background_opacity", watch=True)
+    def _on_bg_opacity_change(self):
+        self._widget.background_opacity = self.background_opacity
+
     def _on_click(self, change):
         """Handle click events — update spectrum and light curve panels."""
         if not hasattr(self, "_spectrum_pane"):
@@ -171,6 +196,9 @@ class SkyViewer(param.Parameterized):
         import holoviews as hv
         import panel as pn
 
+        if not hv.Store.renderers:
+            hv.extension("bokeh")
+
         # Sky widget pane
         sky_pane = pn.pane.IPyWidget(self._widget, sizing_mode="stretch_both")
 
@@ -181,6 +209,9 @@ class SkyViewer(param.Parameterized):
             pn.widgets.Select.from_param(self.param.cmap, name="Colormap"),
             pn.widgets.Select.from_param(self.param.stretch, name="Stretch"),
             pn.widgets.Checkbox.from_param(self.param.show_grid, name="Grid"),
+            "---",
+            pn.widgets.Select.from_param(self.param.background_survey, name="Background"),
+            pn.widgets.FloatSlider.from_param(self.param.background_opacity, name="BG Opacity", step=0.05),
             width=250,
         )
 
