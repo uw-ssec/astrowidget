@@ -68,10 +68,28 @@ class SkyWidget(anywidget.AnyWidget):
     vmax = traitlets.Float(1.0).tag(sync=True)
     opacity = traitlets.Float(1.0).tag(sync=True)
 
+    # --- Grid overlay ---
+    show_grid = traitlets.Bool(True).tag(sync=True)
+
+    # --- Slice indices (wired to PreloadedCube) ---
+    time_idx = traitlets.Int(0).tag(sync=True)
+    freq_idx = traitlets.Int(0).tag(sync=True)
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._wcs = None
         self._current_data = None
+        self._cube = None
+        self._display_wcs = None
+        self.observe(self._on_slice_change, names=["time_idx", "freq_idx"])
+
+    def _on_slice_change(self, change) -> None:
+        """Observer: update displayed image when time_idx or freq_idx changes."""
+        if self._cube is not None and self._display_wcs is not None:
+            self.set_image(
+                self._cube.image(self.time_idx, self.freq_idx),
+                self._display_wcs,
+            )
 
     def set_image(self, data: np.ndarray, wcs: WCS) -> None:
         """Send a 2D numpy array to the widget for display on the sphere.

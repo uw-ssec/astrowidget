@@ -38,8 +38,18 @@ uniform sampler2D u_image;
 uniform sampler2D u_cmap;
 uniform vec2 u_crval, u_cdelt, u_crpix, u_imageSize, u_viewCenter, u_resolution;
 uniform float u_fov, u_opacity;
-uniform int u_stretch;
+uniform int u_stretch, u_showGrid;
 out vec4 fragColor;
+
+// Auto-scale grid interval based on FOV
+float gridInterval(float fovDeg) {
+    if (fovDeg > 90.0) return 30.0;
+    if (fovDeg > 30.0) return 10.0;
+    if (fovDeg > 10.0) return 5.0;
+    if (fovDeg > 3.0) return 1.0;
+    if (fovDeg > 1.0) return 0.5;
+    return 0.1;
+}
 
 void main() {
     vec2 screen = (gl_FragCoord.xy / u_resolution) * 2.0 - 1.0;
@@ -57,26 +67,87 @@ void main() {
         dec = asin(cc*sd0 + mV*sc*cd0/r);
         ra = u_viewCenter.x + atan(lV*sc, r*cd0*cc - mV*sd0*sc);
     }
+
+    // Convert to degrees for grid computation
+    float raDeg = ra * 57.29577951;
+    float decDeg = dec * 57.29577951;
+    float fovDeg = u_fov * 57.29577951;
+
+    // SIN projection: (RA, Dec) -> (l, m) from phase center
     float dra = ra - u_crval.x;
     float sdP = sin(dec), cdP = cos(dec);
     float sd0P = sin(u_crval.y), cd0P = cos(u_crval.y);
     float cdra = cos(dra);
     float cosAng = sdP*sd0P + cdP*cd0P*cdra;
-    if (cosAng <= 0.0) { fragColor = vec4(0,0,0,0); return; }
+
+    // --- Coordinate grid overlay ---
+    float gridAlpha = 0.0;
+    if (u_showGrid == 1) {
+        float interval = gridInterval(fovDeg);
+        // Line thickness in degrees (scales with FOV for consistent screen width)
+        float lineWidth = fovDeg * 0.002;
+
+        // RA grid lines (normalize RA to [0, 360))
+        float raNorm = mod(raDeg, 360.0);
+        float raRem = mod(raNorm, interval);
+        if (raRem < lineWidth || raRem > interval - lineWidth) gridAlpha = 0.35;
+
+        // Dec grid lines
+        float decRem = mod(decDeg + 90.0, interval);
+        if (decRem < lineWidth || decRem > interval - lineWidth) gridAlpha = 0.35;
+    }
+
+    // --- Horizon circle (SIN projection boundary) ---
+    float horizonAlpha = 0.0;
+    if (abs(cosAng) < 0.008) horizonAlpha = 0.5;
+
+    // Outside the visible hemisphere
+    if (cosAng <= 0.0) {
+        // Show grid even outside image (on the "sky" background)
+        if (gridAlpha > 0.0) {
+            fragColor = vec4(1.0, 1.0, 1.0, gridAlpha * 0.5);
+        } else {
+            fragColor = vec4(0,0,0,0);
+        }
+        return;
+    }
+
     float l = cdP * sin(dra);
     float m = sdP*cd0P - cdP*sd0P*cdra;
     float px = l/u_cdelt.x + u_crpix.x - 1.0;
     float py = m/u_cdelt.y + u_crpix.y - 1.0;
     vec2 uv = vec2(px/u_imageSize.x, py/u_imageSize.y);
-    if (uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) { fragColor=vec4(0,0,0,0); return; }
+
+    // Outside image bounds
+    if (uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) {
+        if (gridAlpha > 0.0 || horizonAlpha > 0.0) {
+            float a = max(gridAlpha, horizonAlpha);
+            fragColor = vec4(1.0, 1.0, 1.0, a * 0.5);
+        } else {
+            fragColor = vec4(0,0,0,0);
+        }
+        return;
+    }
+
     vec4 texel = texture(u_image, uv);
     if (texel.a < 0.5) { fragColor = vec4(0,0,0,0); return; }
+
     float norm = texel.r;
     if (u_stretch==1) norm = log(norm*99.0+1.0)/log(100.0);
     else if (u_stretch==2) norm = sqrt(norm);
     else if (u_stretch==3) norm = log(norm*10.0+sqrt(norm*norm*100.0+1.0))/log(10.0+sqrt(101.0));
+
     fragColor = texture(u_cmap, vec2(norm, 0.5));
     fragColor.a *= u_opacity;
+
+    // Overlay grid lines on top of image
+    if (gridAlpha > 0.0) {
+        fragColor.rgb = mix(fragColor.rgb, vec3(1.0), gridAlpha);
+    }
+    // Overlay horizon circle
+    if (horizonAlpha > 0.0) {
+        fragColor.rgb = mix(fragColor.rgb, vec3(0.0, 1.0, 0.5), horizonAlpha);
+    }
 }
 `;
 
@@ -163,7 +234,7 @@ export function render({ model, el }) {
     // Uniforms
     const loc = {};
     ["u_image","u_cmap","u_crval","u_cdelt","u_crpix","u_imageSize",
-     "u_viewCenter","u_fov","u_opacity","u_stretch","u_resolution"].forEach(
+     "u_viewCenter","u_fov","u_opacity","u_stretch","u_showGrid","u_resolution"].forEach(
       n => loc[n] = gl.getUniformLocation(prog, n)
     );
 
@@ -192,7 +263,7 @@ export function render({ model, el }) {
     let imgW = 1, imgH = 1, rawData = null;
     let crval = [0,0], cdelt = [1,1], crpix = [0,0];
     let viewRA = 0, viewDec = 0, viewFov = Math.PI;
-    let vmin = 0, vmax = 1, opacity = 1, stretch = 0;
+    let vmin = 0, vmax = 1, opacity = 1, stretch = 0, showGrid = 1;
     const stretchMap = { linear:0, log:1, sqrt:2, asinh:3 };
 
     function uploadImage() {
@@ -220,6 +291,7 @@ export function render({ model, el }) {
       gl.uniform1f(loc.u_fov, viewFov);
       gl.uniform1f(loc.u_opacity, opacity);
       gl.uniform1i(loc.u_stretch, stretch);
+      gl.uniform1i(loc.u_showGrid, showGrid);
       gl.uniform2f(loc.u_resolution, canvas.width, canvas.height);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
@@ -255,6 +327,7 @@ export function render({ model, el }) {
       vmax = model.get("vmax") || 1;
       opacity = model.get("opacity") ?? 1;
       stretch = stretchMap[model.get("stretch")] || 0;
+      showGrid = model.get("show_grid") === false ? 0 : 1;
     }
 
     function syncAll() {
@@ -278,6 +351,7 @@ export function render({ model, el }) {
     model.on("change:vmax", () => { syncDisplay(); uploadImage(); draw(); });
     model.on("change:opacity", () => { syncDisplay(); draw(); });
     model.on("change:stretch", () => { syncDisplay(); draw(); });
+    model.on("change:show_grid", () => { syncDisplay(); draw(); });
 
     // Initial sync — try immediately, then retry after model is populated
     syncAll();
