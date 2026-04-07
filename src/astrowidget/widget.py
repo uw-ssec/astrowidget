@@ -135,6 +135,60 @@ class SkyWidget(anywidget.AnyWidget):
         if fov is not None:
             self.view_fov = float(fov.to(u.deg).value)
 
+    def set_dataset(self, ds, var: str = "SKY", pol: int = 0, max_size: int = 512) -> None:
+        """Load a zarr-backed dataset for interactive exploration.
+
+        Creates a PreloadedCube for cached slice access and displays
+        the initial slice.
+
+        Parameters
+        ----------
+        ds : xr.Dataset
+            Dataset with dimensions (time, frequency, polarization, l, m).
+        var : str, default "SKY"
+            Data variable name.
+        pol : int, default 0
+            Polarization index.
+        max_size : int, default 512
+            Maximum spatial dimension for display.
+        """
+        from astrowidget.cube import PreloadedCube
+        from astrowidget.wcs import get_wcs
+
+        self._cube = PreloadedCube(ds, var=var, pol=pol, max_size=max_size)
+        wcs = get_wcs(ds, var=var)
+
+        # Adjust WCS for strided display resolution
+        wcs_display = wcs.deepcopy()
+        wcs_display.wcs.cdelt = [
+            wcs.wcs.cdelt[0] * self._cube.stride_l,
+            wcs.wcs.cdelt[1] * self._cube.stride_m,
+        ]
+        wcs_display.wcs.crpix = [
+            (wcs.wcs.crpix[0] - 0.5) / self._cube.stride_l + 0.5,
+            (wcs.wcs.crpix[1] - 0.5) / self._cube.stride_m + 0.5,
+        ]
+        self._display_wcs = wcs_display
+
+        # Display initial slice
+        self.set_image(self._cube.image(0, 0), wcs_display)
+
+    def update_slice(self, time_idx: int, freq_idx: int) -> None:
+        """Update the displayed image to a different time/frequency slice.
+
+        Requires ``set_dataset()`` to have been called first.
+
+        Parameters
+        ----------
+        time_idx : int
+            Time index.
+        freq_idx : int
+            Frequency index.
+        """
+        if not hasattr(self, "_cube") or self._cube is None:
+            raise RuntimeError("Call set_dataset() before update_slice()")
+        self.set_image(self._cube.image(time_idx, freq_idx), self._display_wcs)
+
     def auto_scale(self, percentile_low: float = 2, percentile_high: float = 98) -> None:
         """Set vmin/vmax from data percentiles.
 
