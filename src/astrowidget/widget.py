@@ -92,18 +92,6 @@ class SkyWidget(anywidget.AnyWidget):
         self._display_wcs = None
         self._aladin = None
         self.observe(self._on_slice_change, names=["time_idx", "freq_idx"])
-        self.observe(self._on_view_change, names=["view_ra", "view_dec", "view_fov"])
-
-    def _on_view_change(self, change) -> None:
-        """Observer: sync view state to companion Aladin widget."""
-        if self._aladin is None:
-            return
-        from astropy.coordinates import SkyCoord
-        self._aladin.target = SkyCoord(
-            ra=self.view_ra, dec=self.view_dec, unit="deg", frame="fk5"
-        )
-        self._aladin.fov = self.view_fov
-
     def _on_slice_change(self, change) -> None:
         """Observer: update displayed image when time_idx or freq_idx changes."""
         if self._cube is not None and self._display_wcs is not None:
@@ -211,6 +199,25 @@ class SkyWidget(anywidget.AnyWidget):
 
         # Display initial slice
         self.set_image(self._cube.image(0, 0), wcs_display)
+
+        # Navigate to phase center with FOV fitted to image extent
+        import astropy.units as u
+        from astropy.coordinates import SkyCoord
+
+        phase_center = SkyCoord(
+            ra=wcs.wcs.crval[0], dec=wcs.wcs.crval[1],
+            unit="deg", frame="fk5",
+        )
+        # Image angular extent ≈ max(npix * |cdelt|) across both axes
+        n_l = ds.sizes.get("l", ds.sizes.get("x", 256))
+        n_m = ds.sizes.get("m", ds.sizes.get("y", 256))
+        extent_deg = max(
+            n_l * abs(wcs.wcs.cdelt[0]),
+            n_m * abs(wcs.wcs.cdelt[1]),
+        )
+        # Use 90% of the extent as FOV so the image fills the view with margin
+        fov = min(extent_deg * 0.9, 180.0)
+        self.goto(phase_center, fov=fov * u.deg)
 
     def update_slice(self, time_idx: int, freq_idx: int) -> None:
         """Update the displayed image to a different time/frequency slice.

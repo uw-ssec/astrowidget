@@ -260,6 +260,32 @@ export async function render({ model, el }) {
   canvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;display:block;z-index:1";
   container.appendChild(canvas);
 
+  // Toolbar (top-right, z-index 3)
+  const toolbar = document.createElement("div");
+  toolbar.style.cssText = "position:absolute;top:8px;right:8px;z-index:3;display:flex;gap:4px";
+  container.appendChild(toolbar);
+
+  const btnStyle = "padding:4px 10px;font:12px sans-serif;border:1px solid #888;border-radius:3px;cursor:pointer;color:#fff;background:rgba(0,0,0,0.6)";
+  const btnActiveStyle = btnStyle + ";background:rgba(70,130,255,0.8);border-color:#7af";
+
+  function makeBtn(label, title) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.title = title;
+    b.style.cssText = btnStyle;
+    toolbar.appendChild(b);
+    return b;
+  }
+
+  const btnReset = makeBtn("\u21BA", "Reset view to initial position");
+  const btnPan = makeBtn("\u2725", "Pan mode (drag to rotate)");
+  const btnZoom = makeBtn("\u2B1A", "Box zoom (drag to select region)");
+
+  // Box zoom selection overlay
+  const boxOverlay = document.createElement("div");
+  boxOverlay.style.cssText = "position:absolute;border:2px dashed #7af;background:rgba(70,130,255,0.15);pointer-events:none;z-index:2;display:none";
+  container.appendChild(boxOverlay);
+
   // Readout (on top of everything)
   const readout = document.createElement("div");
   readout.style.cssText = "position:absolute;bottom:8px;left:8px;color:#fff;font:13px monospace;text-shadow:0 0 4px #000;pointer-events:none;z-index:2";
@@ -323,8 +349,39 @@ export async function render({ model, el }) {
     let viewRA = 0, viewDec = 0, viewFov = Math.PI;
     let vmin = 0, vmax = 1, opacity = 1, stretch = 0, showGrid = 1;
     let dragging = false;
+    let userInteracting = false;  // true during drag and briefly after mouseup
+    let interactionTimer = null;
     let crosshairRA = -999, crosshairDec = -999;
     const stretchMap = { linear:0, log:1, sqrt:2, asinh:3 };
+
+    // Interaction mode: "pan" or "boxzoom"
+    let mode = "pan";
+    // Store initial view for reset
+    let initialRA = 0, initialDec = 0, initialFov = Math.PI;
+    let boxStartX = 0, boxStartY = 0, boxing = false;
+
+    function setMode(m) {
+      mode = m;
+      btnPan.style.cssText = m === "pan" ? btnActiveStyle : btnStyle;
+      btnZoom.style.cssText = m === "boxzoom" ? btnActiveStyle : btnStyle;
+      canvas.style.cursor = m === "pan" ? "grab" : "crosshair";
+    }
+    setMode("pan");
+
+    btnPan.addEventListener("click", () => setMode("pan"));
+    btnZoom.addEventListener("click", () => setMode("boxzoom"));
+    btnReset.addEventListener("click", () => {
+      userInteracting = true;
+      viewRA = initialRA; viewDec = initialDec; viewFov = initialFov;
+      model.set("view_ra", viewRA/DEG2RAD);
+      model.set("view_dec", viewDec/DEG2RAD);
+      model.set("view_fov", viewFov/DEG2RAD);
+      model.save_changes();
+      syncAladin();
+      draw();
+      if (interactionTimer) clearTimeout(interactionTimer);
+      interactionTimer = setTimeout(() => { userInteracting = false; }, 500);
+    });
 
     function uploadImage() {
       if (!rawData) return;
@@ -378,8 +435,8 @@ export async function render({ model, el }) {
     }
 
     function syncView() {
-      // Don't overwrite local view state during user interaction
-      if (dragging) return;
+      // Don't overwrite local view state during or shortly after user interaction
+      if (userInteracting) return;
       viewRA = (model.get("view_ra")||0)*DEG2RAD;
       viewDec = (model.get("view_dec")||0)*DEG2RAD;
       viewFov = (model.get("view_fov")||180)*DEG2RAD;
@@ -492,10 +549,14 @@ export async function render({ model, el }) {
       draw();
     });
 
-    // Initial sync — try immediately, then retry after model is populated
+    // Initial sync — retry until data arrives (respects interaction guard)
     syncAll();
-    setTimeout(syncAll, 100);
-    setTimeout(() => { syncAll(); syncAladin(); }, 500);
+    setTimeout(syncAll, 150);
+    setTimeout(() => {
+      syncAll(); syncAladin();
+      // Capture initial view for reset button
+      initialRA = viewRA; initialDec = viewDec; initialFov = viewFov;
+    }, 600);
 
     // --- Interaction ---
     // (dragging declared earlier for syncView guard)
@@ -521,11 +582,41 @@ export async function render({ model, el }) {
     }
 
     canvas.addEventListener("mousedown", e => {
-      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      userInteracting = true;
+      if (interactionTimer) { clearTimeout(interactionTimer); interactionTimer = null; }
       mouseDownX = e.clientX; mouseDownY = e.clientY; didDrag = false;
-      canvas.style.cursor = "grabbing";
+
+      if (mode === "boxzoom") {
+        boxing = true;
+        const rect = container.getBoundingClientRect();
+        boxStartX = e.clientX - rect.left;
+        boxStartY = e.clientY - rect.top;
+        boxOverlay.style.left = boxStartX + "px";
+        boxOverlay.style.top = boxStartY + "px";
+        boxOverlay.style.width = "0";
+        boxOverlay.style.height = "0";
+        boxOverlay.style.display = "block";
+      } else {
+        dragging = true;
+        lastX = e.clientX; lastY = e.clientY;
+        canvas.style.cursor = "grabbing";
+      }
     });
     window.addEventListener("mousemove", e => {
+      if (boxing) {
+        // Box zoom: draw selection rectangle
+        const rect = container.getBoundingClientRect();
+        const curX = e.clientX - rect.left;
+        const curY = e.clientY - rect.top;
+        const x = Math.min(boxStartX, curX), y = Math.min(boxStartY, curY);
+        const w = Math.abs(curX - boxStartX), h = Math.abs(curY - boxStartY);
+        boxOverlay.style.left = x + "px";
+        boxOverlay.style.top = y + "px";
+        boxOverlay.style.width = w + "px";
+        boxOverlay.style.height = h + "px";
+        didDrag = true;
+        return;
+      }
       if (!dragging) {
         // Hover readout
         const rect = canvas.getBoundingClientRect();
@@ -560,8 +651,50 @@ export async function render({ model, el }) {
       requestAnimationFrame(draw);
     });
     window.addEventListener("mouseup", e => {
+      if (boxing) {
+        // Box zoom complete — compute FOV from selection
+        boxing = false;
+        boxOverlay.style.display = "none";
+        interactionTimer = setTimeout(() => { userInteracting = false; }, 500);
+
+        const dist = Math.sqrt((e.clientX-mouseDownX)**2 + (e.clientY-mouseDownY)**2);
+        if (dist < 5) return; // too small, ignore
+
+        const rect = container.getBoundingClientRect();
+        const curX = e.clientX - rect.left;
+        const curY = e.clientY - rect.top;
+
+        // Center of selection in normalized coords [-1, 1]
+        const cx = ((boxStartX + curX) / 2 / rect.width) * 2 - 1;
+        const cy = -(((boxStartY + curY) / 2 / rect.height) * 2 - 1);
+
+        // Navigate to center of selection
+        const center = screenToRaDec(
+          rect.left + (boxStartX + curX) / 2,
+          rect.top + (boxStartY + curY) / 2
+        );
+        viewRA = center.ra;
+        viewDec = center.dec;
+
+        // New FOV proportional to selection size
+        const selFrac = Math.max(Math.abs(curX - boxStartX) / rect.width,
+                                  Math.abs(curY - boxStartY) / rect.height);
+        viewFov = viewFov * selFrac;
+        viewFov = Math.max(0.001 * DEG2RAD, Math.min(Math.PI, viewFov));
+
+        model.set("view_ra", viewRA/DEG2RAD);
+        model.set("view_dec", viewDec/DEG2RAD);
+        model.set("view_fov", viewFov/DEG2RAD);
+        model.save_changes();
+        syncAladin();
+        draw();
+        return;
+      }
       if (dragging) {
-        dragging = false; canvas.style.cursor = "grab";
+        dragging = false;
+        canvas.style.cursor = mode === "pan" ? "grab" : "crosshair";
+        // Keep userInteracting true to absorb model echo, then release
+        interactionTimer = setTimeout(() => { userInteracting = false; }, 500);
         // Distinguish click (< 3px movement) from drag
         const dist = Math.sqrt((e.clientX-mouseDownX)**2 + (e.clientY-mouseDownY)**2);
         if (dist < 3) {
@@ -594,12 +727,15 @@ export async function render({ model, el }) {
     });
     canvas.addEventListener("wheel", e => {
       e.preventDefault();
+      userInteracting = true;
+      if (interactionTimer) clearTimeout(interactionTimer);
       viewFov *= e.deltaY > 0 ? 1.1 : 1/1.1;
       viewFov = Math.max(0.001*DEG2RAD, Math.min(Math.PI, viewFov));
       model.set("view_fov", viewFov/DEG2RAD);
       model.save_changes();
       syncAladin();
       requestAnimationFrame(draw);
+      interactionTimer = setTimeout(() => { userInteracting = false; }, 500);
     }, { passive: false });
 
     // Resize

@@ -98,7 +98,7 @@ class SkyViewer(param.Parameterized):
             ra=self._wcs.wcs.crval[0], dec=self._wcs.wcs.crval[1],
             unit="deg", frame="fk5",
         )
-        self._widget.goto(phase_center, fov=180 * u.deg)
+        # set_dataset() already navigates to phase center with fitted FOV
 
         # Wire click event for linked views
         self._widget.observe(self._on_click, names=["clicked_lm"])
