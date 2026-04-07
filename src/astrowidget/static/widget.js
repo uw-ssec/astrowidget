@@ -549,14 +549,33 @@ export async function render({ model, el }) {
       draw();
     });
 
-    // Initial sync — retry until data arrives (respects interaction guard)
+    // Initial sync — poll until image data arrives from the binary comm channel.
+    // Binary traitlet data often lags behind JSON state, so we poll with
+    // exponential backoff rather than relying on fixed timeouts.
     syncAll();
-    setTimeout(syncAll, 150);
-    setTimeout(() => {
-      syncAll(); syncAladin();
-      // Capture initial view for reset button
-      initialRA = viewRA; initialDec = viewDec; initialFov = viewFov;
-    }, 600);
+    let _pollCount = 0;
+    const _maxPolls = 15;  // ~0 + 100 + 200 + 400 + ... ≈ 6s total
+    function _pollForData() {
+      _pollCount++;
+      syncAll();
+      const bytes = model.get("image_data");
+      const hasData = bytes && (bytes.byteLength || bytes.length) > 0;
+      if (hasData) {
+        log("Data arrived after " + _pollCount + " poll(s)");
+        syncAladin();
+        initialRA = viewRA; initialDec = viewDec; initialFov = viewFov;
+        return;
+      }
+      if (_pollCount < _maxPolls) {
+        setTimeout(_pollForData, Math.min(100 * Math.pow(1.5, _pollCount - 1), 1000));
+      } else {
+        log("No image data after " + _maxPolls + " polls — waiting for change event");
+        // Still capture initial view so reset button works if data arrives later
+        syncAladin();
+        initialRA = viewRA; initialDec = viewDec; initialFov = viewFov;
+      }
+    }
+    setTimeout(_pollForData, 100);
 
     // --- Interaction ---
     // (dragging declared earlier for syncView guard)
