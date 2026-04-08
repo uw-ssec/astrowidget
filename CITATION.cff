@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+title: astrowidget
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Cordero
+    family-names: Core
+    email: cdcore09@gmail.com
+    orcid: "https://orcid.org/0000-0002-3531-3221"
+    affiliation: UW Scientific Software Engineering Center
+repository-code: "https://github.com/uw-ssec/astrowidget"
+license: BSD-3-Clause
+version: 0.1.1
+doi: "10.5281/zenodo.19451814"
+date-released: "2026-04-07"
+abstract: >-
+  Interactive radio astronomy visualization widget for
+  Jupyter.
+keywords:
+  - radio-astronomy
+  - jupyter
+  - visualization
+  - widget
+  - python

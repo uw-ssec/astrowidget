@@ -29,6 +29,9 @@ to analyzing changes)
 5. Update the version in `pyproject.toml`:
    - Change `version = "X.Y.Z"` to the new version
    - Also update `__version__` in `src/astrowidget/__init__.py`
+   - Also update `CITATION.cff`:
+     - Set `version:` to the new version (without `v` prefix)
+     - Set `date-released:` to today's date in `YYYY-MM-DD` format
 
 6. Ensure the JS bundle is current:
    - Copy `js/inline_widget.js` to `src/astrowidget/static/widget.js`
@@ -49,7 +52,7 @@ to analyzing changes)
 
 9. Commit the version bump:
     ```bash
-    git add pyproject.toml src/astrowidget/__init__.py src/astrowidget/static/widget.js
+    git add pyproject.toml src/astrowidget/__init__.py src/astrowidget/static/widget.js CITATION.cff
     git commit -m "chore(release): prepare vX.Y.Z"
     ```
 
