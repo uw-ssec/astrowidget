@@ -6,7 +6,6 @@ Adapted from ovro_lwa_portal.io — no FITS in the display path.
 
 from __future__ import annotations
 
-import re
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Any
