@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 
 class TestBackgroundTraitlets:
     def test_default_no_background(self):

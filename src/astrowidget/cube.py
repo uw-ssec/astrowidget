@@ -102,7 +102,7 @@ class PreloadedCube:
                 out[ti, fi] = slc[l_idx, m_idx]
         return out
 
-    def nearest_lm_idx(self, l: float, m: float) -> tuple[int, int]:
+    def nearest_lm_idx(self, l: float, m: float) -> tuple[int, int]:  # noqa: E741
         """Find nearest display pixel indices for given l, m values."""
         l_idx = int(np.argmin(np.abs(self.l_vals - l)))
         m_idx = int(np.argmin(np.abs(self.m_vals - m)))

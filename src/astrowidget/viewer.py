@@ -75,7 +75,6 @@ class SkyViewer(param.Parameterized):
 
     def __init__(self, ds: xr.Dataset, var: str = "SKY", pol: int = 0, max_size: int = 512, **kwargs):
         super().__init__(**kwargs)
-        import astropy.units as u
         from astropy.coordinates import SkyCoord
 
         from astrowidget.cube import PreloadedCube
@@ -94,7 +93,7 @@ class SkyViewer(param.Parameterized):
         self._widget.set_dataset(ds, var=var, pol=pol, max_size=max_size)
 
         # Navigate to phase center
-        phase_center = SkyCoord(
+        SkyCoord(
             ra=self._wcs.wcs.crval[0], dec=self._wcs.wcs.crval[1],
             unit="deg", frame="fk5",
         )

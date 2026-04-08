@@ -75,7 +75,7 @@ def generate_vectors() -> dict:
 
         # Forward SIN projection
         dra_rad = ra_rad - ra0_rad
-        l = np.cos(dec_rad) * np.sin(dra_rad)
+        l = np.cos(dec_rad) * np.sin(dra_rad)  # noqa: E741
         m = np.sin(dec_rad) * np.cos(dec0_rad) - np.cos(dec_rad) * np.sin(dec0_rad) * np.cos(dra_rad)
 
         # Visibility check
@@ -94,7 +94,6 @@ def generate_vectors() -> dict:
         if visible:
             r = np.sqrt(l**2 + m**2)
             if r <= 1.0 and r > 0:
-                cosc_inv = np.sqrt(1 - r**2)
                 phi = np.arctan2(l, -m)
                 theta = np.arccos(r)
 

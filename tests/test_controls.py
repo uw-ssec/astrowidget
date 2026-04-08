@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 import xarray as xr
 from astropy.wcs import WCS
 
@@ -136,7 +135,6 @@ class TestAutoScale:
         ds = _make_dataset()
         w.set_dataset(ds)
 
-        vmin_0 = w.vmin
         w.time_idx = 2
         # Different slice may produce different auto-scale
         # (at minimum, set_image was called which runs auto_scale)
