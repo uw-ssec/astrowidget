@@ -554,7 +554,7 @@ export async function render({ model, el }) {
     // exponential backoff rather than relying on fixed timeouts.
     syncAll();
     let _pollCount = 0;
-    const _maxPolls = 15;  // ~0 + 100 + 200 + 400 + ... ≈ 6s total
+    const _maxPolls = 30;  // exponential backoff capped at 1s → ~20s total
     function _pollForData() {
       _pollCount++;
       syncAll();
@@ -562,6 +562,7 @@ export async function render({ model, el }) {
       const hasData = bytes && (bytes.byteLength || bytes.length) > 0;
       if (hasData) {
         log("Data arrived after " + _pollCount + " poll(s)");
+        requestAnimationFrame(draw);
         syncAladin();
         initialRA = viewRA; initialDec = viewDec; initialFov = viewFov;
         return;
@@ -575,7 +576,7 @@ export async function render({ model, el }) {
         initialRA = viewRA; initialDec = viewDec; initialFov = viewFov;
       }
     }
-    setTimeout(_pollForData, 100);
+    setTimeout(_pollForData, 50);
 
     // --- Interaction ---
     // (dragging declared earlier for syncView guard)
