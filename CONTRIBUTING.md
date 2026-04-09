@@ -11,7 +11,7 @@ This guide covers project-specific setup and workflows. For general SSEC contrib
 - Read the [README](https://github.com/uw-ssec/astrowidget#readme) and [architecture docs](https://github.com/uw-ssec/astrowidget/tree/main/docs/architecture)
 - Check the [issue tracker](https://github.com/uw-ssec/astrowidget/issues) to see if someone is already working on your idea
 - Comment on an issue before starting work, especially if you're a new contributor
-- For a deeper dive into internals (traitlet bridge, ESM loading, uint8 pipeline, WebGL renderer), see the [Development Guide](https://uw-ssec.github.io/astrowidget/guides/development/)
+- For a deeper dive into internals (traitlet bridge, ESM loading, uint8 pipeline, WebGL renderer), see the [Development Guide](https://github.com/uw-ssec/astrowidget/blob/main/docs/guides/development.md)
 
 ## Development Setup
 
@@ -112,7 +112,7 @@ Use the [feature request template](https://github.com/uw-ssec/astrowidget/issues
 
 ## Code of Conduct
 
-This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). Please read it before participating.
+This project follows the [Contributor Covenant Code of Conduct](https://github.com/uw-ssec/astrowidget/blob/main/CODE_OF_CONDUCT.md). Please read it before participating.
 
 ## License
 
