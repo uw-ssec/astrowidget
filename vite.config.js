@@ -5,7 +5,7 @@ export default defineConfig({
   build: {
     outDir: resolve(__dirname, "src/astrowidget/static"),
     lib: {
-      entry: resolve(__dirname, "js/widget.js"),
+      entry: resolve(__dirname, "js/inline_widget.js"),
       formats: ["es"],
       fileName: () => "widget.js",
     },

@@ -14,15 +14,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-
-      - name: Install JS dependencies
-        run: npm ci
-
-      - name: Build JS bundle
-        run: npm run build
+      - name: Copy JS widget (self-contained, no bundling needed)
+        run: cp js/inline_widget.js src/astrowidget/static/widget.js
 
       - name: Install Python build tools
         run: pip install build
