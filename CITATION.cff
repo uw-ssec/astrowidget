@@ -12,9 +12,9 @@ authors:
     affiliation: UW Scientific Software Engineering Center
 repository-code: "https://github.com/uw-ssec/astrowidget"
 license: BSD-3-Clause
-version: 0.1.1
+version: 0.1.2
 doi: "10.5281/zenodo.19451814"
-date-released: "2026-04-07"
+date-released: "2026-04-09"
 abstract: >-
   Interactive radio astronomy visualization widget for
   Jupyter.
