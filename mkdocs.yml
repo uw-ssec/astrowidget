@@ -58,6 +58,8 @@ nav:
   - Guides:
     - OVRO-LWA Integration: guides/ovro-lwa.md
     - HiPS Backgrounds: guides/hips-backgrounds.md
+    - Development Guide: guides/development.md
+  - Contributing: contributing.md
   - API Reference:
     - SkyWidget: api/sky-widget.md
     - Data I/O: api/data-io.md
