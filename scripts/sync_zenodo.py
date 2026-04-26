@@ -24,3 +24,33 @@ def cff_author_to_zenodo_creator(author: dict) -> dict:
             orcid = orcid[len(ORCID_URL_PREFIX):]
         creator["orcid"] = orcid
     return creator
+
+
+def sync_zenodo(repo_root: Path) -> None:
+    """Read CITATION.cff authors and update .zenodo.json creators."""
+    citation_path = repo_root / "CITATION.cff"
+    zenodo_path = repo_root / ".zenodo.json"
+
+    with open(citation_path) as f:
+        cff = yaml.safe_load(f)
+
+    authors = cff.get("authors")
+    if not authors:
+        print("Error: no authors found in CITATION.cff", file=sys.stderr)
+        sys.exit(1)
+
+    creators = [cff_author_to_zenodo_creator(a) for a in authors]
+
+    with open(zenodo_path) as f:
+        zenodo = json.load(f)
+
+    zenodo["creators"] = creators
+
+    with open(zenodo_path, "w") as f:
+        json.dump(zenodo, f, indent=2)
+        f.write("\n")
+
+
+if __name__ == "__main__":
+    repo_root = Path(__file__).resolve().parent.parent
+    sync_zenodo(repo_root)

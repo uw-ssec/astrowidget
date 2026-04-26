@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
-from scripts.sync_zenodo import cff_author_to_zenodo_creator
+from scripts.sync_zenodo import cff_author_to_zenodo_creator, sync_zenodo
 
 
 class TestCffAuthorToZenodoCreator:
@@ -49,3 +52,53 @@ class TestCffAuthorToZenodoCreator:
         }
         result = cff_author_to_zenodo_creator(author)
         assert result == {"name": "Doe, Jane", "affiliation": "MIT"}
+
+
+class TestSyncZenodo:
+    def test_updates_creators_preserves_other_fields(self, tmp_path):
+        citation = tmp_path / "CITATION.cff"
+        citation.write_text(
+            "cff-version: 1.2.0\n"
+            "title: test\n"
+            "authors:\n"
+            "  - given-names: Alice\n"
+            "    family-names: Smith\n"
+            "    orcid: 'https://orcid.org/0000-0001-2345-6789'\n"
+            "    affiliation: MIT\n"
+            "  - given-names: Bob\n"
+            "    family-names: Jones\n"
+        )
+        zenodo = tmp_path / ".zenodo.json"
+        zenodo.write_text(
+            json.dumps(
+                {
+                    "title": "test project",
+                    "creators": [{"name": "Old, Author"}],
+                    "keywords": ["science"],
+                },
+                indent=2,
+            )
+        )
+
+        sync_zenodo(tmp_path)
+
+        result = json.loads(zenodo.read_text())
+        assert result["title"] == "test project"
+        assert result["keywords"] == ["science"]
+        assert result["creators"] == [
+            {
+                "name": "Smith, Alice",
+                "affiliation": "MIT",
+                "orcid": "0000-0001-2345-6789",
+            },
+            {"name": "Jones, Bob"},
+        ]
+
+    def test_no_authors_raises(self, tmp_path):
+        citation = tmp_path / "CITATION.cff"
+        citation.write_text("cff-version: 1.2.0\ntitle: test\n")
+        zenodo = tmp_path / ".zenodo.json"
+        zenodo.write_text(json.dumps({"creators": []}))
+
+        with pytest.raises(SystemExit):
+            sync_zenodo(tmp_path)
