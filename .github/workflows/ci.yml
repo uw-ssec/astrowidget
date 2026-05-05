@@ -43,3 +43,25 @@ jobs:
         with:
           cache: true
       - run: pixi run docs-build
+
+  sync-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pyyaml
+        run: pip install pyyaml
+
+      - name: Run sync script
+        run: python scripts/sync_zenodo.py
+
+      - name: Check for drift
+        run: |
+          if ! git diff --exit-code .zenodo.json; then
+            echo "::error::.zenodo.json is out of sync with CITATION.cff — run 'pixi run sync-zenodo'"
+            exit 1
+          fi
