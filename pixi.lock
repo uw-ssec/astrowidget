@@ -798,8 +798,8 @@ packages:
   requires_python: '>=3.10'
 - pypi: ./
   name: astrowidget
-  version: 0.1.1
-  sha256: 4271025cb95f089c0f32c4275b51ff29c11e857549f3b3409c494266ba3dfe58
+  version: 0.1.3
+  sha256: 5f6cd42c96227d04424951dbc64133d9389ab47d407015642429500731b55fb8
   requires_dist:
   - anywidget>=0.9
   - traitlets>=5.0

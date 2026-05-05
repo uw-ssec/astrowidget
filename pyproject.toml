@@ -98,3 +98,4 @@ lint = "ruff check src/ tests/"
 docs-serve = { cmd = "mkdocs serve", description = "Serve docs locally at localhost:8000" }
 docs-build = { cmd = "mkdocs build --strict", description = "Build static docs site" }
 vectors = "python tests/generate_test_vectors.py"
+sync-zenodo = { cmd = "python scripts/sync_zenodo.py", description = "Sync .zenodo.json creators from CITATION.cff" }
